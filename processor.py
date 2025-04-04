@@ -68,12 +68,17 @@ def process_file(file_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Process battery CSV files.")
-    parser.add_argument("folder", help="Folder containing CSV files")
+    parser.add_argument("path", help="Path to a single CSV file or a folder containing CSV files.")
     args = parser.parse_args()
     
-    for file in os.listdir(args.folder):
-        if file.endswith(".csv"):
-            process_file(os.path.join(args.folder, file))
+    if os.path.isfile(args.path):
+        process_file(args.path)
+    elif os.path.isdir(args.path):
+        for file in os.listdir(args.path):
+            if file.endswith(".csv"):
+                process_file(os.path.join(args.path, file))
+    else:
+        print(f"Error: {args.path} is not a valid file or directory.")
 
 if __name__ == "__main__":
     main()
