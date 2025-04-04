@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.express as px
 import os
 import shutil
+import argparse
 
 def process_file(file_path):
     df = pd.read_csv(file_path, header=None)
@@ -65,10 +66,14 @@ def process_file(file_path):
     print(f"Summary saved to {output_dir}/battery_summary.csv")
     print(f"Interactive plot saved as {output_dir}/cell_voltages_plot.html")
 
-# Prompt user for the folder containing CSV files
-folder_path = input("Enter the folder path containing CSV files: ")
+def main():
+    parser = argparse.ArgumentParser(description="Process battery CSV files.")
+    parser.add_argument("folder", help="Folder containing CSV files")
+    args = parser.parse_args()
+    
+    for file in os.listdir(args.folder):
+        if file.endswith(".csv"):
+            process_file(os.path.join(args.folder, file))
 
-# Process all CSV files in the specified directory
-for file in os.listdir(folder_path):
-    if file.endswith(".csv"):
-        process_file(os.path.join(folder_path, file))
+if __name__ == "__main__":
+    main()
