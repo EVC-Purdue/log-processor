@@ -3,6 +3,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import shutil
+import argparse
 
 FAULT_FLAGS_V1 = [
     "batteryMinVoltage", "batteryMaxVoltage", "batteryAverageVoltage", "batteryVoltageDiff",
@@ -121,10 +122,19 @@ def process_file(file_path):
     print(f"Summary saved to {output_dir}/battery_summary.csv")
     print(f"Interactive plot saved as {output_dir}/cell_voltages_plot.html")
 
-# Prompt user for the folder containing CSV files
-folder_path = input("Enter the folder path containing CSV files: ")
+def main():
+    parser = argparse.ArgumentParser(description="Process battery CSV files.")
+    parser.add_argument("path", help="Path to a single CSV file or a folder containing CSV files.")
+    args = parser.parse_args()
+    
+    if os.path.isfile(args.path):
+        process_file(args.path)
+    elif os.path.isdir(args.path):
+        for file in os.listdir(args.path):
+            if file.endswith(".csv"):
+                process_file(os.path.join(args.path, file))
+    else:
+        print(f"Error: {args.path} is not a valid file or directory.")
 
-# Process all CSV files in the specified directory
-for file in os.listdir(folder_path):
-    if file.endswith(".csv"):
-        process_file(os.path.join(folder_path, file))
+if __name__ == "__main__":
+    main()
