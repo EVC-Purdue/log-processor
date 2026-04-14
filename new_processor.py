@@ -12,6 +12,8 @@ import os
 import random
 import shutil
 import webbrowser
+import tkinter as tk
+from tkinter import filedialog
 
 column_names = [
     "Timestamp",
@@ -219,9 +221,20 @@ def process_file(file_path: str):
 
 
 def main():
-    # Prompt user for the folder containing CSV files
-    # folder_path = input("Enter the folder path containing CSV files: ")
-    folder_path = "."
+    # Open a folder picker so logs can be selected from Explorer.
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    folder_path = filedialog.askdirectory(title="Select folder containing log CSV files")
+    root.destroy()
+
+    if not folder_path:
+        print("No folder selected. Exiting.")
+        return
+
+    # Run from the selected directory.
+    os.chdir(folder_path)
+
     for filename in os.listdir(folder_path):
         if filename.endswith(".csv"):
             file_path = os.path.join(folder_path, filename)
