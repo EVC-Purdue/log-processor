@@ -67,6 +67,7 @@ def prompt_generate_overflow_cleaned(file_name: str, overflow_rows: int) -> bool
 
 
 def save_outputs(df_to_save: pd.DataFrame, output_dir: str, suffix: str = ""):
+    df_to_save = df_to_save.reset_index(drop=True)
     excel_name = f"processed_battery_data{suffix}.xlsx"
     plot_name = f"battery_plot{suffix}.html"
 
