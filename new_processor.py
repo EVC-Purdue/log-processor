@@ -15,8 +15,7 @@ import webbrowser
 
 column_names = [
     "Timestamp",
-    *[f"Cell_IC0_{i}" for i in range(1, 13)],
-    *[f"Cell_IC1_{i}" for i in range(1, 13)],
+    *[f"Cell_{i}" for i in range(1, 25)],
     "Therm_1",
     "Therm_2",
     "Therm_3",
@@ -152,18 +151,16 @@ def process_file(file_path: str):
 
     # Cell voltage lines
     for i in range(1, 25):
-        cell_name = f"Cell_IC0_{i}" if i < 13 else f"Cell_IC1_{i-12}"
         # rainbow colors for cells so 0 is red and 24 is purple
         display.add_trace(
             go.Scatter(
                 x=df["Timestamp"],
-                y=df[cell_name],
+                y=df[f"Cell_{i}"],
                 mode="lines",
-                name=cell_name,
+                name=f"Cell_{i}",
                 line=dict(color=f"hsl({(i-1)*15}, 70%, 50%)")
             )
         )
-        # TODO: Change back to raw cell nums
 
     # Add current line
     display.add_trace(
@@ -184,10 +181,10 @@ def process_file(file_path: str):
 
     # Highlight faults
     fault_indices = df.index[df["Fault_Text"] != "None"].tolist()
-    label_levels = [0.72, 0.78, 0.84, 0.9, 0.96]
+    label_levels = [0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5]
     for i, idx in enumerate(fault_indices):
         fault_label = str(df["Fault_Text"].iloc[idx])
-        y_pos = label_levels[i % len(label_levels)] + random.uniform(-0.012, 0.012)
+        y_pos = label_levels[i % len(label_levels)] # stagger labels to avoid overlap
         y_pos = max(0.65, min(0.98, y_pos))
         display.add_vline(
             x=df["Timestamp"].iloc[idx],
