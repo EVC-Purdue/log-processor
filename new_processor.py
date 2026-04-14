@@ -53,6 +53,108 @@ therm_columns = [
 ]
 
 
+def prompt_generate_overflow_cleaned(file_name: str, overflow_rows: int) -> bool:
+    while True:
+        response = input(
+            f"Detected {overflow_rows} row(s) in {file_name} with a cell voltage over 6V. "
+            "Generate overflow cleaned secondary files? (y/n): "
+        ).strip().lower()
+        if response in {"y", "yes"}:
+            return True
+        if response in {"n", "no"}:
+            return False
+        print("Please answer with 'y' or 'n'.")
+
+
+def save_outputs(df_to_save: pd.DataFrame, output_dir: str, suffix: str = ""):
+    excel_name = f"processed_battery_data{suffix}.xlsx"
+    plot_name = f"battery_plot{suffix}.html"
+
+    summary = {
+        "Max Temp": df_to_save[therm_columns].max().max(),
+        "Max Current": df_to_save["Current"].max(),
+        "Max Power": df_to_save["Power"].max(),
+        "Max Delta": df_to_save["Delta"].max(),
+        "Max Cell Voltage": df_to_save.iloc[:, 1:25].max().max(),
+        "Min Cell Voltage": df_to_save.iloc[:, 1:25].min().min(),
+        "Mode Highest Cell": df_to_save["Highest_Cell"].mode().iloc[0],
+        "Mode Lowest Cell": df_to_save["Lowest_Cell"].mode().iloc[0],
+        "Present Faults": df_to_save["Fault_Text"].value_counts().to_dict(),
+    }
+    summary_df = pd.DataFrame(summary, index=["Summary"])
+
+    with pd.ExcelWriter(os.path.join(output_dir, excel_name)) as writer:
+        df_to_save.to_excel(writer, sheet_name="Data", index=False)
+        summary_df.to_excel(writer, sheet_name="Summary")
+
+    display = go.Figure()
+
+    for i in range(1, 25):
+        display.add_trace(
+            go.Scatter(
+                x=df_to_save["Timestamp"],
+                y=df_to_save[f"Cell_{i}"],
+                mode="lines",
+                name=f"Cell_{i}",
+                line=dict(color=f"hsl({(i-1)*15}, 70%, 50%)"),
+            )
+        )
+
+    display.add_trace(
+        go.Scatter(
+            x=df_to_save["Timestamp"],
+            y=df_to_save["Current"],
+            mode="lines",
+            name="Current (A)",
+            yaxis="y2",
+        )
+    )
+
+    display.add_trace(
+        go.Scatter(
+            x=df_to_save["Timestamp"],
+            y=df_to_save["Power"],
+            mode="lines",
+            name="Power (W)",
+            yaxis="y3",
+        )
+    )
+
+    fault_indices = df_to_save.index[df_to_save["Fault_Text"] != "None"].tolist()
+    label_levels = [0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5]
+    for i, idx in enumerate(fault_indices):
+        fault_label = str(df_to_save["Fault_Text"].iloc[idx])
+        y_pos = label_levels[i % len(label_levels)]
+        y_pos = max(0.65, min(0.98, y_pos))
+        display.add_vline(
+            x=df_to_save["Timestamp"].iloc[idx],
+            line=dict(color="red", width=1, dash="dot"),
+        )
+        display.add_annotation(
+            x=df_to_save["Timestamp"].iloc[idx],
+            y=y_pos,
+            xref="x",
+            yref="paper",
+            text=fault_label,
+            showarrow=False,
+            xanchor="left",
+            yanchor="middle",
+            font=dict(size=9, color="red"),
+            bgcolor="rgba(255,255,255,0.6)",
+        )
+
+    title_suffix = " (Overflow Cleaned)" if suffix else ""
+    display.update_layout(
+        title=f"Battery Cell Voltages, Current, and Power Over Time{title_suffix}",
+        xaxis_title="Index",
+        yaxis=dict(title="Voltage (V)"),
+        yaxis2=dict(title="Current (A)", overlaying="y", side="right"),
+        yaxis3=dict(title="Power (W)", overlaying="y", side="right", position=0.95),
+        legend=dict(x=1.05),
+    )
+    display.write_html(os.path.join(output_dir, plot_name))
+
+
 def decode_faults(fault_value):
     fault_value = str(fault_value).strip()
     output = []
@@ -105,19 +207,6 @@ def process_file(file_path: str):
     # Decode faults
     df["Fault_Text"] = df["Faults"].apply(decode_faults)
 
-    summary = {
-        "Max Temp": df[therm_columns].max().max(),
-        "Max Current": df["Current"].max(),
-        "Max Power": df["Power"].max(),
-        "Max Delta": df["Delta"].max(),
-        "Max Cell Voltage": df.iloc[:, 1:25].max().max(),
-        "Min Cell Voltage": df.iloc[:, 1:25].min().min(),
-        "Mode Highest Cell": df["Highest_Cell"].mode().iloc[0],
-        "Mode Lowest Cell": df["Lowest_Cell"].mode().iloc[0],
-        "Present Faults": df["Fault_Text"].value_counts().to_dict(),
-    }
-    summary_df = pd.DataFrame(summary, index=["Summary"])
-
     # Create output folder based off the file name
     folder_name = os.path.splitext(os.path.basename(file_path))[0]
     output_dir = os.path.join(os.path.dirname(file_path), folder_name)
@@ -126,96 +215,27 @@ def process_file(file_path: str):
     # Move original file to the folder
     shutil.move(file_path, os.path.join(output_dir, os.path.basename(file_path)))
 
-    # Save processed data to excel with summary sheet
-    with pd.ExcelWriter(
-        os.path.join(output_dir, "processed_battery_data.xlsx")
-    ) as writer:
-        df.to_excel(writer, sheet_name="Data", index=False)
-        summary_df.to_excel(writer, sheet_name="Summary")
-
-        # Highlight faults in the data sheet
-    #     workbook = writer.book
-    #     worksheet = writer.sheets["Data"]
-    #     yellow_fill = workbook.add_format({"bg_color": "#FBE921"})  # type: ignore
-    #     red_fill = workbook.add_format({"bg_color": "#FF0000"})  # type: ignore
-    #     for row_num, value in enumerate(df["Delta_Highlight"], start=2):
-    #         if value == "HIGH":
-    #             worksheet.set_row(row_num - 1, cell_format=yellow_fill)
-    #     for row_num, value in enumerate(df["Power_Highlight"], start=2):
-    #         if value == "HIGH":
-    #             worksheet.set_row(row_num - 1, cell_format=yellow_fill)
-    #     for row_num, value in enumerate(df["Fault_Text"], start=2):
-    #         if value != "None":
-    #             worksheet.set_row(row_num - 1, cell_format=red_fill)
-    # print(f"Summary saved to {output_dir}/battery_summary.csv")
-
-    display = go.Figure()
-
-    # Cell voltage lines
-    for i in range(1, 25):
-        # rainbow colors for cells so 0 is red and 24 is purple
-        display.add_trace(
-            go.Scatter(
-                x=df["Timestamp"],
-                y=df[f"Cell_{i}"],
-                mode="lines",
-                name=f"Cell_{i}",
-                line=dict(color=f"hsl({(i-1)*15}, 70%, 50%)")
-            )
-        )
-
-    # Add current line
-    display.add_trace(
-        go.Scatter(
-            x=df["Timestamp"],
-            y=df["Current"],
-            mode="lines",
-            name="Current (A)",
-            yaxis="y2",
-        )
-    )
-    # Add power line
-    display.add_trace(
-        go.Scatter(
-            x=df["Timestamp"], y=df["Power"], mode="lines", name="Power (W)", yaxis="y3"
-        )
-    )
-
-    # Highlight faults
-    fault_indices = df.index[df["Fault_Text"] != "None"].tolist()
-    label_levels = [0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5]
-    for i, idx in enumerate(fault_indices):
-        fault_label = str(df["Fault_Text"].iloc[idx])
-        y_pos = label_levels[i % len(label_levels)] # stagger labels to avoid overlap
-        y_pos = max(0.65, min(0.98, y_pos))
-        display.add_vline(
-            x=df["Timestamp"].iloc[idx],
-            line=dict(color="red", width=1, dash="dot"),
-        )
-        display.add_annotation(
-            x=df["Timestamp"].iloc[idx],
-            y=y_pos,
-            xref="x",
-            yref="paper",
-            text=fault_label,
-            showarrow=False,
-            xanchor="left",
-            yanchor="middle",
-            font=dict(size=9, color="red"),
-            bgcolor="rgba(255,255,255,0.6)",
-        )
-
-    # Add labels
-    display.update_layout(
-        title="Battery Cell Voltages, Current, and Power Over Time",
-        xaxis_title="Index",
-        yaxis=dict(title="Voltage (V)"),
-        yaxis2=dict(title="Current (A)", overlaying="y", side="right"),
-        yaxis3=dict(title="Power (W)", overlaying="y", side="right", position=0.95),
-        legend=dict(x=1.05),
-    )
-    display.write_html(os.path.join(output_dir, "battery_plot.html"))
+    save_outputs(df, output_dir)
     print(f"Interactive plot saved as {output_dir}/battery_plot.html")
+
+    overflow_mask = (df[cell_columns] > 6.0).any(axis=1)
+    overflow_count = int(overflow_mask.sum())
+    if overflow_count > 0:
+        should_generate = prompt_generate_overflow_cleaned(
+            os.path.basename(file_path), overflow_count
+        )
+        if should_generate:
+            cleaned_df = df.loc[~overflow_mask].copy()
+            if cleaned_df.empty:
+                print(
+                    "All rows exceeded the 6V threshold; no overflow cleaned files were generated."
+                )
+            else:
+                save_outputs(cleaned_df, output_dir, suffix=" overflow cleaned")
+                print(
+                    f"Overflow cleaned files saved as {output_dir}/processed_battery_data overflow cleaned.xlsx "
+                    f"and {output_dir}/battery_plot overflow cleaned.html"
+                )
 
     print(f"Processed data saved to {output_dir}")
 
